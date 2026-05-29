@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Alertes de la Flotte</title>
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/alerts.css">
+</head>
+<body>
+
+    <div class="container">
+        <h1> Alertes de la Flotte</h1>
+
+        <!-- =========================
+             FILTRES
+        ========================= -->
+        <div class="card filters-card">
+            <form action="/alerts" method="GET" class="filters-form" id="filtersForm">
+                <div class="filter-group">
+                    <label>Véhicule</label>
+                    <input type="text" name="device" placeholder="Nom ou ID..." value="<%= filters.device || '' %>">
+                </div>
+
+                <div class="filter-group">
+                    <label>Type d'alerte</label>
+                    <select name="type">
+                        <option value="">Tous les types</option>
+                        <option value="SPEED" <%= filters.type === 'SPEED' ? 'selected' : '' %>>Survitesse</option>
+                        <option value="POWER" <%= filters.type === 'POWER' ? 'selected' : '' %>>Alimentation</option>
+                        <option value="IO199" <%= filters.type === 'IO199' ? 'selected' : '' %>>Injection (IO199)</option>
+                        <option value="TIME" <%= filters.type === 'TIME' ? 'selected' : '' %>>Incohérence Temps</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Date</label>
+                    <input type="date" name="date" value="<%= filters.date || '' %>">
+                </div>
+
+                <div class="filter-actions">
+                    <button type="submit" class="btn btn-primary">Filtrer</button>
+                    <a href="/alerts" class="btn btn-secondary">Réinitialiser</a>
+                    <button type="button" class="btn btn-success" onclick="exportCsv()">
+                         Exporter CSV
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- =========================
+             STATS RAPIDES
+        ========================= -->
+        <div class="stats-row">
+            <% stats.forEach(s => { %>
+                <div class="stat-card">
+                    <span class="stat-label"><%= s.alert_type %></span>
+                    <span class="stat-value"><%= s.count %></span>
+                </div>
+            <% }) %>
+        </div>
+
+        <!-- =========================
+             LISTE DES ALERTES
+        ========================= -->
+        <div class="card table-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date & Heure</th>
+                        <th>Véhicule</th>
+                        <th>Type</th>
+                        <th>Observation</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (alerts.length > 0) { %>
+                        <% alerts.forEach(alert => { %>
+                            <tr>
+                                <td><%= new Date(alert.alert_time).toLocaleString('fr-FR') %></td>
+                                <td><strong><%= alert.device_name %></strong></td>
+                                <td>
+                                    <span class="badge badge-<%= alert.alert_type.toLowerCase() %>">
+                                        <%= alert.alert_type %>
+                                    </span>
+                                </td>
+                                <td><%= alert.observation %></td>
+                                <td>
+                                    <button class="btn btn-small" onclick="viewOnMap('<%= alert.latitude %>', '<%= alert.longitude %>')">
+                                        📍 Carte
+                                    </button>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } else { %>
+                        <tr>
+                            <td colspan="5" style="text-align: center;">Aucune alerte trouvée pour ces critères.</td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function viewOnMap(lat, lng) {
+            window.open(`https://www.google.com/maps?q=${lat},${lng}`, '_blank');
+        }
+
+        function exportCsv() {
+            // Récupérer les filtres actuels depuis l'URL pour exporter la même chose
+            const urlParams = new URLSearchParams(window.location.search);
+            window.location.href = `/alerts/export?${urlParams.toString()}`;
+        }
+    </script>
+
+</body>
+</html>

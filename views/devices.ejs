@@ -1,0 +1,772 @@
+<%- include('layouts/header', { title: "Véhicules - Dashboard" }) %>
+
+<link rel="stylesheet" href="/css/devices-layout.css">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+
+<div class="devices-layout">
+
+  <!-- Colonne de gauche - Liste des véhicules -->
+  <div class="devices-sidebar">
+    <div class="sidebar-header">
+      <h2><i class="fa-solid fa-truck"></i> Véhicules</h2>
+      <input
+        type="text"
+        class="search-box"
+        id="deviceSearch"
+        placeholder="Rechercher un véhicule..."
+        value="<%= searchTerm %>"
+      >
+    </div>
+
+    <div class="devices-list" id="devicesList">
+      <% if (devices && devices.length > 0) { %>
+        <% devices.forEach(device => { %>
+    <div
+  class="device-item"
+  data-device-id="<%= device.device_id %>"
+    >
+    
+
+            <div class="device-item-header">
+              <span class="device-name">
+                <i class="fa-solid fa-truck"></i>
+                <%= device.device_name || 'Sans nom' %>
+              </span>
+              <span class="device-id">ID: <%= device.device_id %></span>
+            </div>
+            <div class="device-stats">
+              <span class="stat-badge time">
+                <i class="fa-regular fa-clock"></i>
+                <span class="stat-count-time-<%= device.device_id %>">0</span>
+              </span>
+              <span class="stat-badge speed">
+                <i class="fa-solid fa-gauge-high"></i>
+                <span class="stat-count-speed-<%= device.device_id %>">0</span>
+              </span>
+              <span class="stat-badge power">
+                <i class="fa-solid fa-bolt"></i>
+                <span class="stat-count-power-<%= device.device_id %>">0</span>
+              </span>
+              <span class="stat-badge io">
+                <i class="fa-solid fa-microchip"></i>
+                <span class="stat-count-io-<%= device.device_id %>">0</span>
+              </span>
+            </div>
+          </div>
+        <% }) %>
+      <% } else { %>
+        <div class="no-device-selected" style="padding: 40px 20px;">
+          <i class="fa-solid fa-satellite-dish fa-3x"></i>
+          <p>Aucun véhicule trouvé</p>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- Colonne de droite - Dashboard du véhicule sélectionné -->
+  <div class="device-dashboard" id="deviceDashboard">
+    <div class="no-device-selected">
+      <i class="fa-solid fa-hand-pointer"></i>
+      <h3>Sélectionnez un véhicule</h3>
+      <p>Cliquez sur un véhicule dans la liste pour voir son tableau de bord détaillé</p>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  let currentDeviceId = null;
+  let speedChart = null;
+  let powerChart = null;
+  let searchTimeout = null;
+  let dashboardRequestToken = 0;
+  let statsLoadingSet = new Set();
+  let alertsData = {
+    recent: [],
+    timeInconsistency: [],
+    excessiveSpeed: [],
+    powerAnomalies: [],
+    io199: []
+  };
+
+const initialDevices = JSON.parse('<%- JSON.stringify(devices || []) %>');
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('deviceSearch');
+    const devicesList = document.getElementById('devicesList');
+
+    if (searchInput) {
+      searchInput.addEventListener('input', function (e) {
+        clearTimeout(searchTimeout);
+        const query = (e.target.value || '').trim();
+
+        if (devicesList) {
+          devicesList.style.opacity = '0.6';
+        }
+
+        searchTimeout = setTimeout(() => {
+          performSearch(query);
+        }, 400);
+      });
+    }
+
+    if (Array.isArray(initialDevices) && initialDevices.length > 0) {
+      loadInitialStats(initialDevices);
+    }
+  });
+
+  async function performSearch(query) {
+    const devicesList = document.getElementById('devicesList');
+
+    try {
+      let url = '/devices/api';
+      if (query) {
+        url += `?search=${encodeURIComponent(query)}`;
+      }
+
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data && Array.isArray(data.devices)) {
+        updateDevicesList(data.devices);
+      } else {
+        console.error('Format de réponse inattendu :', data);
+        updateDevicesList([]);
+      }
+
+    } catch (error) {
+      console.error('Search error:', error);
+
+      if (devicesList) {
+        devicesList.innerHTML = `
+          <div class="no-device-selected" style="padding: 40px 20px;">
+            <i class="fa-solid fa-triangle-exclamation" style="color: #e74c3c;"></i>
+            <p>Erreur lors de la recherche</p>
+          </div>
+        `;
+      }
+    } finally {
+      if (devicesList) {
+        devicesList.style.opacity = '1';
+      }
+    }
+  }
+
+  function updateDevicesList(devices) {
+    const devicesList = document.getElementById('devicesList');
+    const deviceDashboard = document.getElementById('deviceDashboard');
+
+    if (!devicesList) return;
+
+    if (!Array.isArray(devices) || devices.length === 0) {
+      devicesList.innerHTML = `
+        <div class="no-device-selected" style="padding: 40px 20px;">
+          <i class="fa-solid fa-satellite-dish fa-3x"></i>
+          <p>Aucun véhicule trouvé</p>
+        </div>
+      `;
+      return;
+    }
+
+    const selectedId = normalizeId(currentDeviceId);
+
+    devicesList.innerHTML = devices.map(device => {
+      const deviceId = normalizeId(device.device_id);
+      const isSelected = selectedId !== null && selectedId === deviceId ? 'selected' : '';
+
+      return `
+        <div class="device-item ${isSelected}" data-device-id="${deviceId}" onclick="selectDevice(${deviceId}, this)">
+          <div class="device-item-header">
+            <span class="device-name">
+              <i class="fa-solid fa-truck"></i>
+              ${escapeHtml(device.device_name || 'Sans nom')}
+            </span>
+            <span class="device-id">ID: ${deviceId}</span>
+          </div>
+          <div class="device-stats">
+            <span class="stat-badge time">
+              <i class="fa-regular fa-clock"></i>
+              <span class="stat-count-time-${deviceId}">0</span>
+            </span>
+            <span class="stat-badge speed">
+              <i class="fa-solid fa-gauge-high"></i>
+              <span class="stat-count-speed-${deviceId}">0</span>
+            </span>
+            <span class="stat-badge power">
+              <i class="fa-solid fa-bolt"></i>
+              <span class="stat-count-power-${deviceId}">0</span>
+            </span>
+            <span class="stat-badge io">
+              <i class="fa-solid fa-microchip"></i>
+              <span class="stat-count-io-${deviceId}">0</span>
+            </span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (selectedId !== null) {
+      const selectedExists = devices.some(d => normalizeId(d.device_id) === selectedId);
+
+      if (selectedExists) {
+        loadDeviceStats(selectedId);
+      } else {
+        currentDeviceId = null;
+
+        if (deviceDashboard) {
+          deviceDashboard.innerHTML = `
+            <div class="no-device-selected">
+              <i class="fa-solid fa-hand-pointer"></i>
+              <h3>Sélectionnez un véhicule</h3>
+              <p>Cliquez sur un véhicule dans la liste pour voir son tableau de bord détaillé</p>
+            </div>
+          `;
+        }
+      }
+    }
+
+    loadInitialStats(devices);
+  }
+
+  async function selectDevice(deviceId, element) {
+    const normalizedId = normalizeId(deviceId);
+    if (normalizedId === null) return;
+
+    document.querySelectorAll('.device-item').forEach(el => {
+      el.classList.remove('selected');
+    });
+
+    if (element) {
+      element.classList.add('selected');
+    }
+
+    currentDeviceId = normalizedId;
+    await loadDeviceDashboard(normalizedId);
+  }
+
+  async function loadDeviceDashboard(deviceId) {
+    const normalizedId = normalizeId(deviceId);
+    const dashboardEl = document.getElementById('deviceDashboard');
+    if (normalizedId === null || !dashboardEl) return;
+
+    const requestToken = ++dashboardRequestToken;
+
+    dashboardEl.innerHTML = `
+      <div class="loading-device">
+        <div class="spinner"></div>
+        <p>Chargement des données du véhicule...</p>
+      </div>
+    `;
+
+    try {
+      const response = await fetch(`/devices/api/${normalizedId}/dashboard`, {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (requestToken !== dashboardRequestToken) {
+        return;
+      }
+
+      if (data && data.success) {
+        renderDashboard(dashboardEl, data);
+        updateDeviceStats(normalizedId, data.totals || {});
+      } else {
+        dashboardEl.innerHTML = `
+          <div class="no-device-selected">
+            <i class="fa-solid fa-triangle-exclamation" style="color: #e74c3c;"></i>
+            <h3>Erreur</h3>
+            <p>${escapeHtml(data?.message || 'Impossible de charger les données du véhicule')}</p>
+          </div>
+        `;
+      }
+
+    } catch (error) {
+      console.error('Error loading dashboard:', error);
+
+      if (requestToken !== dashboardRequestToken) {
+        return;
+      }
+
+      dashboardEl.innerHTML = `
+        <div class="no-device-selected">
+          <i class="fa-solid fa-triangle-exclamation" style="color: #e74c3c;"></i>
+          <h3>Erreur</h3>
+          <p>Erreur de connexion</p>
+        </div>
+      `;
+    }
+  }
+
+  function renderDashboard(container, data) {
+    const device = data.device || {};
+    const totals = data.totals || {};
+    const charts = data.charts || {};
+    const alerts = data.alerts || {};
+
+    alertsData = {
+      recent: Array.isArray(alerts.recent) ? alerts.recent : [],
+      timeInconsistency: Array.isArray(alerts.timeInconsistency) ? alerts.timeInconsistency : [],
+      excessiveSpeed: Array.isArray(alerts.excessiveSpeed) ? alerts.excessiveSpeed : [],
+      powerAnomalies: Array.isArray(alerts.powerAnomalies) ? alerts.powerAnomalies : [],
+      io199: Array.isArray(alerts.io199) ? alerts.io199 : []
+    };
+
+    container.innerHTML = `
+      <div class="dashboard-header" style="margin-bottom: 20px;">
+        <h3 style="margin: 0 0 5px 0;">
+          <i class="fa-solid fa-truck"></i>
+          ${escapeHtml(device.device_name || ('Véhicule ' + (device.device_id || '')))}
+        </h3>
+        <p style="margin: 0; color: #7f8c8d; font-size: 0.9rem;">
+          ID: ${escapeHtml(device.device_id || '-')} | Dernière MAJ: ${formatDateFr(device.server_time)}
+        </p>
+      </div>
+
+      <div class="dashboard-cards">
+        <div class="dashboard-card">
+          <h4>Total Alertes</h4>
+          <div class="value">${toInt(totals.totalAlerts)}</div>
+        </div>
+        <div class="dashboard-card">
+          <h4>Vitesse actuelle</h4>
+          <div class="value">${formatNumber(device.speed)} km/h</div>
+        </div>
+        <div class="dashboard-card">
+          <h4>Puissance</h4>
+          <div class="value">${formatNumber(device.power)} V</div>
+        </div>
+        <div class="dashboard-card">
+          <h4>IO199</h4>
+          <div class="value">${toInt(device.io199)}</div>
+        </div>
+      </div>
+
+     <div class="alert-summary">
+  
+  <div class="alert-summary-item time">
+    <div class="count">${toInt(totals.timeAlerts)}</div>
+    <div class="label">
+      <i class="fas fa-clock"></i> Temps
+    </div>
+  </div>
+
+  <div class="alert-summary-item speed">
+    <div class="count">${toInt(totals.speedAlerts)}</div>
+    <div class="label">
+      <i class="fas fa-tachometer-alt"></i> Vitesse
+    </div>
+  </div>
+
+  <div class="alert-summary-item power">
+    <div class="count">${toInt(totals.powerAlerts)}</div>
+    <div class="label">
+      <i class="fas fa-bolt"></i> Alim.
+    </div>
+  </div>
+
+  <div class="alert-summary-item io">
+    <div class="count">${toInt(totals.io199Alerts)}</div>
+    <div class="label">
+      <i class="fas fa-microchip"></i> IO199
+    </div>
+  </div>
+
+  <div class="alert-summary-item total">
+    <div class="count">${toInt(totals.totalAlerts)}</div>
+    <div class="label">
+      <i class="fas fa-chart-line"></i> Total
+    </div>
+  </div>
+
+</div>
+
+      <div class="chart-row">
+        <div class="chart-box">
+          <h3><i class="fa-solid fa-gauge-high" style="color: #e74c3c;"></i> Vitesse (km/h)</h3>
+          <div class="chart-canvas">
+            <canvas id="speedChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fa-solid fa-bolt" style="color: #f39c12;"></i> Puissance (V)</h3>
+          <div class="chart-canvas">
+            <canvas id="powerChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="alerts-tabs">
+        
+        <button class="alert-tab active" onclick="showAlertTab('all', event)">
+          <i class="fas fa-layer-group"></i> Toutes
+        </button>
+
+        <button class="alert-tab" onclick="showAlertTab('time', event)">
+          <i class="fas fa-clock"></i> Temps
+        </button>
+
+        <button class="alert-tab" onclick="showAlertTab('speed', event)">
+          <i class="fas fa-tachometer-alt"></i> Vitesse
+        </button>
+
+        <button class="alert-tab" onclick="showAlertTab('power', event)">
+          <i class="fas fa-bolt"></i> Alimentation
+        </button>
+
+        <button class="alert-tab" onclick="showAlertTab('io', event)">
+          <i class="fas fa-microchip"></i> IO199
+        </button>
+
+      </div>
+
+      <div class="alerts-table">
+        <div id="alertsTableContainer">
+          ${renderAlertsTable(alertsData.recent, 'all')}
+        </div>
+      </div>
+    `;
+
+    initCharts(
+      Array.isArray(charts.timestamps) ? charts.timestamps : [],
+      Array.isArray(charts.speeds) ? charts.speeds : [],
+      Array.isArray(charts.powers) ? charts.powers : []
+    );
+  }
+
+  function renderAlertsTable(alerts, type) {
+    if (!Array.isArray(alerts) || alerts.length === 0) {
+      return `<p style="text-align: center; padding: 20px; color: #999;">Aucune alerte de ce type</p>`;
+    }
+
+    let filteredAlerts = alerts;
+
+    if (type !== 'all') {
+      filteredAlerts = alerts.filter(a => normalizeAlertType(a.type) === type);
+    }
+
+    if (filteredAlerts.length === 0) {
+      return `<p style="text-align: center; padding: 20px; color: #999;">Aucune alerte de ce type</p>`;
+    }
+
+    return `
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Date/Heure</th>
+            <th>Détails</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filteredAlerts.map(alert => {
+            const normalizedType = normalizeAlertType(alert.type);
+            const displayDate = formatDateFr(alert.server_time || alert.device_time || alert.alert_time);
+            const detail = formatAlertDetail(alert, normalizedType);
+
+            return `
+              <tr>
+                <td>
+                  <span class="alert-badge badge-${normalizedType}">
+                    ${
+                      normalizedType === 'time' ? '⏱️ Temps' :
+                      normalizedType === 'speed' ? '⚡ Vitesse' :
+                      normalizedType === 'power' ? '🔋 Alim.' :
+                      '📊 IO199'
+                    }
+                  </span>
+                </td>
+                <td>${displayDate}</td>
+                <td>${detail}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function initCharts(timestamps, speeds, powers) {
+    if (speedChart) {
+      speedChart.destroy();
+      speedChart = null;
+    }
+
+    if (powerChart) {
+      powerChart.destroy();
+      powerChart = null;
+    }
+
+    const speedCtx = document.getElementById('speedChart')?.getContext('2d');
+    const powerCtx = document.getElementById('powerChart')?.getContext('2d');
+
+    if (speedCtx && Array.isArray(timestamps) && timestamps.length > 0) {
+      speedChart = new Chart(speedCtx, {
+        type: 'line',
+        data: {
+          labels: timestamps.map(ts => formatTimeOnly(ts)),
+          datasets: [{
+            label: 'Vitesse (km/h)',
+            data: Array.isArray(speeds) ? speeds : [],
+            borderColor: '#e74c3c',
+            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    if (powerCtx && Array.isArray(timestamps) && timestamps.length > 0) {
+      powerChart = new Chart(powerCtx, {
+        type: 'line',
+        data: {
+          labels: timestamps.map(ts => formatTimeOnly(ts)),
+          datasets: [{
+            label: 'Puissance (V)',
+            data: Array.isArray(powers) ? powers : [],
+            borderColor: '#f39c12',
+            backgroundColor: 'rgba(243, 156, 18, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+  }
+
+  function showAlertTab(type, event) {
+    document.querySelectorAll('.alert-tab').forEach(tab => {
+      tab.classList.remove('active');
+    });
+
+    const target = event?.currentTarget || event?.target;
+    if (target) {
+      target.classList.add('active');
+    }
+
+    const container = document.getElementById('alertsTableContainer');
+    if (!container) return;
+
+    let alerts = [];
+
+    switch (type) {
+      case 'time':
+        alerts = alertsData.timeInconsistency;
+        break;
+      case 'speed':
+        alerts = alertsData.excessiveSpeed;
+        break;
+      case 'power':
+        alerts = alertsData.powerAnomalies;
+        break;
+      case 'io':
+        alerts = alertsData.io199;
+        break;
+      default:
+        alerts = alertsData.recent;
+        break;
+    }
+
+    container.innerHTML = renderAlertsTable(alerts, type);
+  }
+
+  function updateDeviceStats(deviceId, totals) {
+    const normalizedId = normalizeId(deviceId);
+    if (normalizedId === null) return;
+
+    const timeSpan = document.querySelector(`.stat-count-time-${normalizedId}`);
+    const speedSpan = document.querySelector(`.stat-count-speed-${normalizedId}`);
+    const powerSpan = document.querySelector(`.stat-count-power-${normalizedId}`);
+    const ioSpan = document.querySelector(`.stat-count-io-${normalizedId}`);
+
+    if (timeSpan) timeSpan.textContent = String(toInt(totals.timeAlerts));
+    if (speedSpan) speedSpan.textContent = String(toInt(totals.speedAlerts));
+    if (powerSpan) powerSpan.textContent = String(toInt(totals.powerAlerts));
+    if (ioSpan) ioSpan.textContent = String(toInt(totals.io199Alerts));
+  }
+
+  async function loadDeviceStats(deviceId) {
+    const normalizedId = normalizeId(deviceId);
+    if (normalizedId === null) return;
+
+    if (statsLoadingSet.has(normalizedId)) return;
+    statsLoadingSet.add(normalizedId);
+
+    try {
+      const response = await fetch(`/devices/api/${normalizedId}/dashboard`, {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data && data.success) {
+        updateDeviceStats(normalizedId, data.totals || {});
+      }
+    } catch (error) {
+      console.error(`Error loading stats for device ${normalizedId}:`, error);
+    } finally {
+      statsLoadingSet.delete(normalizedId);
+    }
+  }
+
+  async function loadInitialStats(devices) {
+    if (!Array.isArray(devices) || devices.length === 0) return;
+
+    const validIds = devices
+      .map(d => normalizeId(d?.device_id))
+      .filter(id => id !== null);
+
+    const batchSize = 8;
+
+    for (let i = 0; i < validIds.length; i += batchSize) {
+      const batch = validIds.slice(i, i + batchSize);
+      await Promise.all(batch.map(id => loadDeviceStats(id)));
+      await delay(50);
+    }
+  }
+
+  function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function formatDateFr(value) {
+    if (!value) return 'Date inconnue';
+
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return 'Date invalide';
+
+    return date.toLocaleString('fr-FR');
+  }
+
+  function formatTimeOnly(value) {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('fr-FR');
+  }
+
+  function formatNumber(value) {
+    const num = Number(value || 0);
+    return Number.isFinite(num) ? num.toFixed(2) : '0.00';
+  }
+
+  function computeTimeDiff(serverTime, deviceTime) {
+    const s = new Date(serverTime);
+    const d = new Date(deviceTime);
+
+    if (isNaN(s.getTime()) || isNaN(d.getTime())) return 0;
+
+    return Math.floor(Math.abs(s.getTime() - d.getTime()) / 1000);
+  }
+
+  function normalizeAlertType(type) {
+    const value = String(type || '').toLowerCase();
+
+    if (value.includes('time') || value.includes('incoherence')) return 'time';
+    if (value.includes('speed') || value.includes('survitesse')) return 'speed';
+    if (value.includes('power') || value.includes('alim')) return 'power';
+    if (value.includes('io')) return 'io';
+
+    return 'io';
+  }
+
+  function formatAlertDetail(alert, normalizedType) {
+    if (normalizedType === 'time') {
+      return `Écart: ${computeTimeDiff(alert.server_time, alert.device_time)} s`;
+    }
+
+    if (normalizedType === 'speed') {
+      if (alert.speed !== undefined && alert.speed !== null) {
+        return `Vitesse: ${Number(alert.speed)} km/h`;
+      }
+      if (alert.max_speed !== undefined && alert.max_speed !== null) {
+        return `Vitesse max: ${Number(alert.max_speed)} km/h`;
+      }
+      if (alert.min_speed !== undefined && alert.min_speed !== null) {
+        return `Vitesse min: ${Number(alert.min_speed)} km/h`;
+      }
+      return 'Vitesse non disponible';
+    }
+
+    if (normalizedType === 'power') {
+      if (alert.power !== undefined && alert.power !== null) {
+        return `Puissance: ${Number(alert.power)} V`;
+      }
+      if (alert.power_value !== undefined && alert.power_value !== null) {
+        return `Puissance: ${Number(alert.power_value)} V`;
+      }
+      return 'Puissance non disponible';
+    }
+
+    if (alert.io199 !== undefined && alert.io199 !== null) {
+      return `IO199: ${Number(alert.io199)}`;
+    }
+    if (alert.io199_value !== undefined && alert.io199_value !== null) {
+      return `IO199: ${Number(alert.io199_value)}`;
+    }
+
+    return 'Valeur non disponible';
+  }
+
+  function normalizeId(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function toInt(value) {
+    const num = Number(value || 0);
+    return Number.isFinite(num) ? Math.round(num) : 0;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+</script>
+<script>
+    document.addEventListener('click', function(e) {
+      const item = e.target.closest('.device-item');
+      if (!item) return;
+
+      const id = Number(item.dataset.deviceId);
+      selectDevice(id, item);
+    });
+    </script>
+
+<%- include('layouts/footer') %>

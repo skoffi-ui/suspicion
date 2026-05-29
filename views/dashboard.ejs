@@ -1,0 +1,146 @@
+<%- include('layouts/header', { title: "Dashboard Alertes" }) %>
+
+<link rel="stylesheet" href="/css/dashboard.css">
+
+<div class="dashboard-container">
+  <h1 class="dashboard-title">Dashboard Alertes</h1>
+
+  <!-- Barre de chargement -->
+  <div id="loading-bar-container">
+    <div id="loading-bar"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <h3>Total</h3>
+      <div class="value" id="total">0</div>
+    </div>
+
+    <div class="stat-card speed">
+      <h3>Survitesse</h3>
+      <div class="value" id="speed_count">0</div>
+    </div>
+
+    <div class="stat-card power">
+      <h3>Alimentation</h3>
+      <div class="value" id="power_count">0</div>
+    </div>
+
+    <div class="stat-card io">
+      <h3>Injection</h3>
+      <div class="value" id="io_count">0</div>
+    </div>
+
+    <div class="stat-card time">
+      <h3>Incohérence</h3>
+      <div class="value" id="time_count">0</div>
+    </div>
+  </div>
+
+  <!-- TABLEAUX -->
+  <div class="dashboard-grid">
+
+    <!-- SURVITESSE -->
+    <div class="card">
+      <div class="card-header-row">
+        <h2>Survitesse</h2>
+        <span class="mini-badge speed-badge">SPEED</span>
+      </div>
+
+      <div class="table-scroll">
+        <table class="dashboard-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Véhicule</th>
+              <th>Vitesse</th>
+              <th>Observation</th>
+            </tr>
+          </thead>
+          <tbody id="speed_table">
+            <tr><td colspan="4">Chargement...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ALIMENTATION -->
+    <div class="card">
+      <div class="card-header-row">
+        <h2>Alimentation (Anomalies)</h2>
+        <span class="mini-badge power-badge">POWER</span>
+      </div>
+
+      <div class="table-scroll">
+        <table class="dashboard-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Véhicule</th>
+              <th>Voltage</th>
+              <th>Observation</th>
+            </tr>
+          </thead>
+          <tbody id="power_table">
+            <tr><td colspan="4">Chargement...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- INJECTION -->
+    <div class="card">
+      <div class="card-header-row">
+        <h2>Injection de données</h2>
+        <span class="mini-badge io-badge">IO</span>
+      </div>
+
+      <div class="table-scroll">
+        <table class="dashboard-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Véhicule</th>
+              <th>IO</th>
+              <th>Observation</th>
+            </tr>
+          </thead>
+          <tbody id="io_table">
+            <tr><td colspan="4">Chargement...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- INCOHERENCE -->
+    <div class="card">
+      <div class="card-header-row">
+        <h2>Incohérence Date</h2>
+        <span class="mini-badge time-badge">TIME</span>
+      </div>
+
+      <div class="table-scroll">
+        <table class="dashboard-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Véhicule</th>
+              <th>GPS</th>
+              <th>Serveur</th>
+              <th>Observation</th>
+            </tr>
+          </thead>
+          <tbody id="time_table">
+            <tr><td colspan="5">Chargement...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/js/dashboard.js"></script>
+
+<%- include('layouts/footer') %>

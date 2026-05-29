@@ -1,0 +1,288 @@
+<%- include('layouts/header', { title: title }) %>
+
+<link rel="stylesheet" href="/css/devices-detail.css">
+<div class="container-fluid">
+
+  <div class="back-button">
+    <a href="/devices" class="btn btn-outline-secondary">
+      <i class="fa-solid fa-arrow-left"></i> Retour à la liste des véhicules
+    </a>
+  </div>
+
+  <!-- =========================
+       EN-TÊTE VÉHICULE
+  ========================= -->
+  <div class="device-header">
+    <div>
+      <h1>
+        <i class="fa-solid fa-truck"></i>
+        <%= device && device.device_name ? device.device_name : 'Véhicule ' + (device ? device.device_id : 'inconnu') %>
+      </h1>
+      <p>
+        <i class="fa-solid fa-id-card"></i> ID: <%= device ? device.device_id : 'N/A' %>
+      </p>
+      <div class="last-update">
+        <i class="fa-solid fa-clock"></i> 
+        Dernière mise à jour: 
+        <%= device && device.server_time ? new Date(device.server_time).toLocaleString('fr-FR') : 'Inconnue' %>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       STATISTIQUES DES ALERTES
+  ========================= -->
+<div class="stats-grid">
+  
+  <!-- Incohérence de temps -->
+  <div class="stat-card time">
+    <div class="stat-icon">
+      <span class="icon-circle">T</span>
+    </div>
+    <h3>Incohérence de temps</h3>
+    <div class="stat-value"><%= stats ? stats.time : 0 %></div>
+    <div class="stat-label">Occurrences détectées</div>
+  </div>
+  
+  <!-- Vitesse excessive -->
+  <div class="stat-card speed">
+    <div class="stat-icon">
+      <span class="icon-circle">V</span>
+    </div>
+    <h3>Vitesse excessive</h3>
+    <div class="stat-value"><%= stats ? stats.speed : 0 %></div>
+    <div class="stat-label">Occurrences détectées</div>
+  </div>
+  
+  <!-- Anomalie puissance -->
+  <div class="stat-card power">
+    <div class="stat-icon">
+      <span class="icon-circle">P</span>
+    </div>
+    <h3>Anomalie de puissance</h3>
+    <div class="stat-value"><%= stats ? stats.power : 0 %></div>
+    <div class="stat-label">Occurrences détectées</div>
+  </div>
+  
+  <!-- Alerte IO199 -->
+  <div class="stat-card io">
+    <div class="stat-icon">
+      <span class="icon-circle">IO</span>
+    </div>
+    <h3>Alerte IO199</h3>
+    <div class="stat-value"><%= stats ? stats.io199 : 0 %></div>
+    <div class="stat-label">Occurrences détectées</div>
+  </div>
+  
+</div>
+  <!-- =========================
+       RÉSUMÉ RAPIDE
+  ========================= -->
+  <div class="detail-section" style="background: #f8f9fa;">
+    <h2>
+      <i class="fa-solid fa-chart-simple"></i>
+      Résumé des alertes
+    </h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-around;">
+      <div style="text-align: center;">
+        <div style="font-size: 36px; font-weight: bold; color: #3498db;"><%= stats ? stats.time : 0 %></div>
+        <div>Incohérences temps</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="font-size: 36px; font-weight: bold; color: #e74c3c;"><%= stats ? stats.speed : 0 %></div>
+        <div>Vitesses excessives</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="font-size: 36px; font-weight: bold; color: #f39c12;"><%= stats ? stats.power : 0 %></div>
+        <div>Anomalies puissance</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="font-size: 36px; font-weight: bold; color: #9b59b6;"><%= stats ? stats.io199 : 0 %></div>
+        <div>Alertes IO199</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="font-size: 36px; font-weight: bold; color: #2c3e50;"><%= stats ? stats.total : 0 %></div>
+        <div>Total alertes</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       DÉTAIL DES ALERTES
+  ========================= -->
+
+  <!-- Vitesses excessives -->
+  <div class="detail-section">
+    <h2>
+      <i class="fa-solid fa-gauge-high" style="color: #e74c3c;"></i>
+      Détail des vitesses excessives
+      <span class="badge-count speed"><%= excessiveSpeed ? excessiveSpeed.length : 0 %> alertes</span>
+    </h2>
+    
+    <% if (excessiveSpeed && excessiveSpeed.length > 0) { %>
+      <div class="alert-list">
+        <% excessiveSpeed.forEach(alert => { %>
+          <div class="alert-item">
+            <div class="date">
+              <i class="fa-regular fa-calendar"></i>
+              <%= alert.server_time ? new Date(alert.server_time).toLocaleString('fr-FR') : '' %>
+            </div>
+            <div class="value">
+              <i class="fa-solid fa-tachometer-alt"></i>
+              <%= alert.speed || 0 %> km/h
+            </div>
+            <div class="motif">
+              <%= alert.motif || 'Dépassement de vitesse' %>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <i class="fa-solid fa-check-circle" style="color: #27ae60;"></i>
+        <p>Aucune vitesse excessive détectée pour ce véhicule</p>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Incohérences de temps -->
+  <div class="detail-section">
+    <h2>
+      <i class="fa-solid fa-clock" style="color: #3498db;"></i>
+      Détail des incohérences de temps
+      <span class="badge-count time"><%= timeInconsistency ? timeInconsistency.length : 0 %> alertes</span>
+    </h2>
+    
+    <% if (timeInconsistency && timeInconsistency.length > 0) { 
+      timeInconsistency.forEach(alert => {
+        const deviceDate = alert.device_time ? new Date(alert.device_time) : null;
+        const serverDate = alert.server_time ? new Date(alert.server_time) : null;
+        let diffText = 'N/A';
+        
+        if (deviceDate && serverDate) {
+          const diff = Math.abs(serverDate - deviceDate);
+          const hours = Math.floor(diff / 3600000);
+          const minutes = Math.floor((diff % 3600000) / 60000);
+          diffText = `${hours}h ${minutes}min`;
+        }
+    %>
+      <div class="alert-item">
+        <div class="date">
+          <i class="fa-regular fa-calendar"></i>
+          Véhicule: <%= deviceDate ? deviceDate.toLocaleString('fr-FR') : 'N/A' %>
+        </div>
+        <div class="value">
+          <i class="fa-solid fa-server"></i>
+          Serveur: <%= serverDate ? serverDate.toLocaleString('fr-FR') : 'N/A' %>
+        </div>
+        <div class="motif">
+          Écart: <strong><%= diffText %></strong>
+          <% if (alert.motif) { %> - <%= alert.motif %><% } %>
+        </div>
+      </div>
+    <% }); %>
+    <% } else { %>
+      <div class="empty-state">
+        <i class="fa-solid fa-check-circle" style="color: #27ae60;"></i>
+        <p>Aucune incohérence de temps détectée pour ce véhicule</p>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Anomalies de puissance -->
+  <div class="detail-section">
+    <h2>
+      <i class="fa-solid fa-bolt" style="color: #f39c12;"></i>
+      Détail des anomalies de puissance
+      <span class="badge-count power">
+        <% 
+          let powerAnomaliesCount = 0;
+          if (powerEvolution && powerEvolution.length > 0) {
+            powerAnomaliesCount = powerEvolution.filter(p => {
+              const powerVal = parseFloat(p.power);
+              return !isNaN(powerVal) && (powerVal < 10 || powerVal > 30);
+            }).length;
+          }
+        %>
+        <%= powerAnomaliesCount %> alertes
+      </span>
+    </h2>
+    
+    <% 
+      if (powerEvolution && powerEvolution.length > 0) { 
+        let hasAnomaly = false;
+        powerEvolution.forEach(alert => {
+          const powerVal = parseFloat(alert.power);
+          if (!isNaN(powerVal) && (powerVal < 10 || powerVal > 30)) {
+            hasAnomaly = true;
+    %>
+      <div class="alert-item">
+        <div class="date">
+          <i class="fa-regular fa-calendar"></i>
+          <%= alert.server_time ? new Date(alert.server_time).toLocaleString('fr-FR') : '' %>
+        </div>
+        <div class="value">
+          <i class="fa-solid fa-battery-half"></i>
+          Puissance: <%= alert.power || 0 %>
+        </div>
+        <div class="motif">
+          <%= powerVal < 10 ? ' Puissance trop faible' : ' Puissance trop élevée' %>
+        </div>
+      </div>
+    <%    
+          }
+        });
+        if (!hasAnomaly) {
+    %>
+      <div class="empty-state">
+        <i class="fa-solid fa-check-circle" style="color: #27ae60;"></i>
+        <p>Aucune anomalie de puissance détectée pour ce véhicule</p>
+      </div>
+    <% 
+        }
+      } else { 
+    %>
+      <div class="empty-state">
+        <i class="fa-solid fa-check-circle" style="color: #27ae60;"></i>
+        <p>Aucune anomalie de puissance détectée pour ce véhicule</p>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Alertes IO199 -->
+  <div class="detail-section">
+    <h2>
+      <i class="fa-solid fa-microchip" style="color: #9b59b6;"></i>
+      Détail des alertes IO199
+      <span class="badge-count io"><%= io199Data ? io199Data.length : 0 %> alertes</span>
+    </h2>
+    
+    <% if (io199Data && io199Data.length > 0) { %>
+      <div class="alert-list">
+        <% io199Data.forEach(alert => { %>
+          <div class="alert-item">
+            <div class="date">
+              <i class="fa-regular fa-calendar"></i>
+              <%= alert.server_time ? new Date(alert.server_time).toLocaleString('fr-FR') : '' %>
+            </div>
+            <div class="value">
+              <i class="fa-solid fa-circle"></i>
+              IO199: <%= alert.io199 || 0 %>
+            </div>
+            <div class="motif">
+              <%= alert.motif || 'Alerte IO199 détectée' %>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <i class="fa-solid fa-check-circle" style="color: #27ae60;"></i>
+        <p>Aucune alerte IO199 détectée pour ce véhicule</p>
+      </div>
+    <% } %>
+  </div>
+
+</div>
+
+<%- include('layouts/footer') %>

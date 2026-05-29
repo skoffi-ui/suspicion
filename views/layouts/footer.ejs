@@ -1,0 +1,91 @@
+<footer class="text-center py-3 text-muted">
+  © 2026   SUD CONTRACTORS – Plateforme SUSPICION
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  let reportsBuilderModalInstance = null;
+
+  function getReportsBuilderModal() {
+    const modalElement = document.getElementById('reportsBuilderModal');
+
+    if (!modalElement) {
+      console.error('Modale reportsBuilderModal introuvable');
+      return null;
+    }
+
+    if (!reportsBuilderModalInstance) {
+      reportsBuilderModalInstance = new bootstrap.Modal(modalElement, {
+        backdrop: true,
+        keyboard: true
+      });
+    }
+
+    return reportsBuilderModalInstance;
+  }
+
+  function openReportsBuilderModal(event) {
+    if (event) event.preventDefault();
+
+    const modal = getReportsBuilderModal();
+    if (!modal) return;
+
+    modal.show();
+  }
+
+  function closeReportsBuilderModal() {
+    if (reportsBuilderModalInstance) {
+      reportsBuilderModalInstance.hide();
+    }
+  }
+
+  function generateReport() {
+    const days = document.getElementById('reportPeriod')?.value || '7';
+    const type = document.getElementById('reportType')?.value || 'all';
+    const format = document.getElementById('reportFormat')?.value || 'html';
+
+    const params = new URLSearchParams();
+    params.set('days', days);
+    params.set('type', type);
+
+    if (format === 'excel') {
+      params.set('format', 'excel');
+    }
+
+    const targetUrl = `/reports?${params.toString()}`;
+
+    closeReportsBuilderModal();
+
+    window.open(targetUrl, '_blank');
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const modalElement = document.getElementById('reportsBuilderModal');
+
+    if (!modalElement) return;
+
+    modalElement.addEventListener('shown.bs.modal', function () {
+      const firstField =
+        document.getElementById('reportPeriod') ||
+        document.getElementById('reportType') ||
+        document.getElementById('reportFormat');
+
+      if (firstField) {
+        firstField.focus();
+      }
+    });
+
+    modalElement.addEventListener('hidden.bs.modal', function () {
+      const reportPeriod = document.getElementById('reportPeriod');
+      const reportType = document.getElementById('reportType');
+      const reportFormat = document.getElementById('reportFormat');
+
+      if (reportPeriod) reportPeriod.value = '7';
+      if (reportType) reportType.value = 'all';
+      if (reportFormat) reportFormat.value = 'html';
+    });
+  });
+</script>
+</body>
+</html>

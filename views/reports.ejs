@@ -1,0 +1,443 @@
+<%  function pad(value) {
+    return String(value).padStart(2, '0');
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function formatNumber(value, decimals = 0) {
+    if (value === null || value === undefined || value === '') return '-';
+    const num = Number(value);
+    if (Number.isNaN(num)) return value;
+    return num.toFixed(decimals);
+  }
+
+  function getTypeLabel(value) {
+    switch (value) {
+      case 'SURVITESSE': return 'Survitesse';
+      case 'ALIMENTATION_CASE1': return 'Alimentation Case 1';
+      case 'ALIMENTATION_CASE2': return 'Alimentation Case 2';
+      case 'INJECTION_DONNEES': return 'Injection de données';
+      case 'INCOHERENCE_DATE': return 'Incohérence de date';
+      case 'all': return 'Rapport général';
+      default: return value || 'Rapport';
+    }
+  }
+
+  function buildSurvitesseObservation(row) {
+    return `Vitesse > 50 km/h pendant ${formatNumber(row.duration_min, 0)} min (min : ${formatNumber(row.min_speed, 2)} km/h, max : ${formatNumber(row.max_speed, 2)} km/h)`;
+  }
+
+  function buildAlimentationObservation(row) {
+    if (row.alert_type === 'ALIMENTATION_CASE2') {
+      return `Surtension détectée : ${formatNumber(row.power_value, 3)} V`;
+    }
+    return `Alimentation anormale détectée : ${formatNumber(row.power_value, 3)} V`;
+  }
+
+  function buildInjectionObservation(row) {
+    return `Injection de données détectée avec IO199 = ${formatNumber(row.io199_value, 0)}`;
+  }
+
+  function buildIncoherenceObservation(row) {
+    return `Incohérence entre device_time et server_time pendant ${formatNumber(row.duration_min, 0)} min`;
+  }
+
+  let reportRows = [];
+  let reportTitle = getTypeLabel(type);
+
+  if (type === 'SURVITESSE') {
+    reportRows = sections?.survitesse || [];
+  } else if (type === 'ALIMENTATION_CASE1' || type === 'ALIMENTATION_CASE2') {
+    reportRows = (sections?.alimentation || []).filter(row => row.alert_type === type);
+  } else if (type === 'INJECTION_DONNEES') {
+    reportRows = sections?.injection || [];
+  } else if (type === 'INCOHERENCE_DATE') {
+    reportRows = sections?.incoherence || [];
+  } else {
+    const allRows = [
+      ...(sections?.survitesse || []).map(row => ({ ...row, report_group: 'SURVITESSE' })),
+      ...(sections?.alimentation || []).map(row => ({ ...row, report_group: row.alert_type || 'ALIMENTATION' })),
+      ...(sections?.injection || []).map(row => ({ ...row, report_group: 'INJECTION_DONNEES' })),
+      ...(sections?.incoherence || []).map(row => ({ ...row, report_group: 'INCOHERENCE_DATE' })),
+    ];
+
+    reportRows = allRows.sort((a, b) => {
+      const da = new Date(a.alert_time || a.start_time || 0).getTime();
+      const db = new Date(b.alert_time || b.start_time || 0).getTime();
+      return db - da;
+    });
+  }
+%>
+
+<%- include('layouts/header') %>
+
+<style>
+  nav,
+  .navbar,
+  header,
+  .main-navbar,
+  .topbar,
+  .sidebar,
+  .sidenav,
+  .menu,
+  .app-header {
+    display: none !important;
+  }
+
+  body {
+    background: #f4f6f9 !important;
+  }
+
+  .report-page {
+    padding: 32px 20px;
+  }
+
+  .report-card {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 0.125rem 0.75rem rgba(0, 0, 0, 0.08);
+    border: 0;
+  }
+
+  .report-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .report-brand {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex: 1 1 700px;
+    min-width: 320px;
+  }
+
+  .report-logo-box {
+    flex: 0 0 220px;
+    max-width: 220px;
+  }
+
+  .report-logo {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    object-fit: contain;
+  }
+
+  .report-title-box {
+    flex: 1;
+    min-width: 280px;
+  }
+
+  .report-title {
+    font-size: 2.6rem;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 10px;
+    color: #212529;
+  }
+
+  .report-subtitle {
+    font-size: 1.15rem;
+    color: #6c757d;
+    margin-bottom: 10px;
+  }
+
+  .report-meta {
+    font-size: 1.1rem;
+    margin: 0;
+    color: #212529;
+  }
+
+  .report-date-box {
+    flex: 0 0 240px;
+    text-align: right;
+    min-width: 220px;
+  }
+
+  .report-date-box .label {
+    font-size: 0.95rem;
+    color: #6c757d;
+    margin-bottom: 6px;
+  }
+
+  .report-date-box .value {
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: #212529;
+    line-height: 1.2;
+  }
+
+  .report-section-title {
+    font-weight: 700;
+    margin-bottom: 0;
+  }
+
+  .report-section-subtitle {
+    font-size: 0.95rem;
+    color: #6c757d;
+  }
+
+  .table thead th {
+    white-space: nowrap;
+    font-size: 0.95rem;
+  }
+
+  .table tbody td {
+    vertical-align: middle;
+    font-size: 0.93rem;
+  }
+
+  @media (max-width: 992px) {
+    .report-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .report-brand {
+      flex-direction: column;
+      align-items: flex-start;
+      min-width: 100%;
+    }
+
+    .report-logo-box {
+      max-width: 200px;
+    }
+
+    .report-date-box {
+      text-align: left;
+      min-width: 100%;
+    }
+
+    .report-title {
+      font-size: 2rem;
+    }
+
+    .report-date-box .value {
+      font-size: 1.3rem;
+    }
+  }
+
+  @media print {
+    nav,
+    .navbar,
+    header,
+    .main-navbar,
+    .topbar,
+    .sidebar,
+    .sidenav,
+    .menu,
+    .app-header,
+    footer,
+    .btn,
+    .no-print {
+      display: none !important;
+    }
+
+    body {
+      background: #fff !important;
+    }
+
+    .report-page {
+      padding: 0 !important;
+    }
+
+    .report-card {
+      box-shadow: none !important;
+      border: none !important;
+    }
+  }
+</style>
+
+<div class="container-fluid report-page">
+  <div class="container">
+
+    <div class="card report-card mb-4">
+      <div class="card-body p-4 p-md-5">
+        <div class="report-header">
+
+          <div class="report-brand">
+            <div class="report-logo-box">
+              <img src="/images/logo-sud-contractors.png" alt="Logo SUD CONTRACTORS" class="report-logo">
+            </div>
+
+            <div class="report-title-box">
+              <h1 class="report-title">Rapport d’alertes</h1>
+              <div class="report-subtitle">SUD CONTRACTORS – Plateforme SUSPICION</div>
+              <p class="report-meta">
+                <strong>Type :</strong> <%= reportTitle %><br>
+                <strong>Période :</strong> <%= days %> jour(s)
+              </p>
+            </div>
+          </div>
+
+          <div class="report-date-box">
+            <div class="label">Généré le</div>
+            <div class="value"><%= generatedAt %></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="card report-card">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="report-section-title"><%= reportTitle %></h5>
+          <div class="report-section-subtitle"><%= reportRows.length %> ligne(s)</div>
+        </div>
+      </div>
+
+      <div class="card-body table-responsive">
+        <% if (!reportRows.length) { %>
+          <div class="alert alert-light border text-muted mb-0">
+            Aucune donnée disponible pour le type de rapport sélectionné.
+          </div>
+        <% } %>
+
+        <% if (reportRows.length) { %>
+
+          <% if (type === 'SURVITESSE') { %>
+            <table class="table table-bordered table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>Véhicule</th>
+                  <th>Vitesse min</th>
+                  <th>Vitesse max</th>
+                  <th>Durée (min)</th>
+                  <th>Observation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% reportRows.forEach(row => { %>
+                  <tr>
+                    <td><%= formatDateTime(row.alert_time || row.end_time || row.start_time) %></td>
+                    <td><%= row.device_name || row.device_id %></td>
+                    <td><%= formatNumber(row.min_speed, 2) %> km/h</td>
+                    <td><%= formatNumber(row.max_speed, 2) %> km/h</td>
+                    <td><%= formatNumber(row.duration_min, 0) %></td>
+                    <td><%= buildSurvitesseObservation(row) %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } else if (type === 'ALIMENTATION_CASE1' || type === 'ALIMENTATION_CASE2') { %>
+            <table class="table table-bordered table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>Véhicule</th>
+                  <th>Type</th>
+                  <th>Voltage</th>
+                  <th>Observation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% reportRows.forEach(row => { %>
+                  <tr>
+                    <td><%= formatDateTime(row.alert_time || row.end_time || row.start_time) %></td>
+                    <td><%= row.device_name || row.device_id %></td>
+                    <td><%= getTypeLabel(row.alert_type) %></td>
+                    <td><%= formatNumber(row.power_value, 3) %> V</td>
+                    <td><%= buildAlimentationObservation(row) %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } else if (type === 'INJECTION_DONNEES') { %>
+            <table class="table table-bordered table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>Véhicule</th>
+                  <th>IO199</th>
+                  <th>Observation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% reportRows.forEach(row => { %>
+                  <tr>
+                    <td><%= formatDateTime(row.alert_time || row.end_time || row.start_time) %></td>
+                    <td><%= row.device_name || row.device_id %></td>
+                    <td><%= formatNumber(row.io199_value, 0) %></td>
+                    <td><%= buildInjectionObservation(row) %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } else if (type === 'INCOHERENCE_DATE') { %>
+            <table class="table table-bordered table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Début</th>
+                  <th>Fin</th>
+                  <th>Véhicule</th>
+                  <th>Durée (min)</th>
+                  <th>Observation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% reportRows.forEach(row => { %>
+                  <tr>
+                    <td><%= formatDateTime(row.start_time) %></td>
+                    <td><%= formatDateTime(row.end_time || row.alert_time) %></td>
+                    <td><%= row.device_name || row.device_id %></td>
+                    <td><%= formatNumber(row.duration_min, 0) %></td>
+                    <td><%= buildIncoherenceObservation(row) %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } else { %>
+            <table class="table table-bordered table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Véhicule</th>
+                  <th>Détail</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% reportRows.forEach(row => { %>
+                  <tr>
+                    <td><%= formatDateTime(row.alert_time || row.end_time || row.start_time) %></td>
+                    <td><%= getTypeLabel(row.report_group || row.alert_type) %></td>
+                    <td><%= row.device_name || row.device_id %></td>
+                    <td>
+                      <% if ((row.report_group || row.alert_type) === 'SURVITESSE') { %>
+                        <%= buildSurvitesseObservation(row) %>
+                      <% } else if ((row.report_group || row.alert_type) === 'ALIMENTATION_CASE1' || (row.report_group || row.alert_type) === 'ALIMENTATION_CASE2') { %>
+                        <%= buildAlimentationObservation(row) %>
+                      <% } else if ((row.report_group || row.alert_type) === 'INJECTION_DONNEES') { %>
+                        <%= buildInjectionObservation(row) %>
+                      <% } else if ((row.report_group || row.alert_type) === 'INCOHERENCE_DATE') { %>
+                        <%= buildIncoherenceObservation(row) %>
+                      <% } else { %>
+                        -
+                      <% } %>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } %>
+
+        <% } %>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<%- include('layouts/footer') %>
